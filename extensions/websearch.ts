@@ -10,6 +10,7 @@
 import {
   type ExtensionAPI,
   type ExtensionContext,
+  truncateHead,
   truncateLine,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -23,6 +24,8 @@ export const MAX_NUM_RESULTS = 20;
 export const MAX_CONTEXT_CHARACTERS = 50_000;
 /** Keeps a single search from eating the context window when the model does not ask for a limit. */
 export const DEFAULT_CONTEXT_MAX_CHARACTERS = 10_000;
+/** Lines of a search result shown before the output is expanded. */
+const PREVIEW_LINES = 8;
 /** How long an identical query keeps returning the same results within a session. */
 export const CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -305,6 +308,26 @@ export default function websearchExtension(pi: ExtensionAPI) {
         0,
         0,
       );
+    },
+
+    // Search results run to thousands of words. Collapsed, show the opening
+    // lines; ctrl+r expands the tool output to the full text.
+    renderResult(result, { expanded }, theme) {
+      const content = result.content[0];
+      const text = content?.type === "text" ? content.text : "";
+      if (expanded) return new Text(text, 0, 0);
+
+      const {
+        content: head,
+        truncated,
+        totalLines,
+      } = truncateHead(text, {
+        maxLines: PREVIEW_LINES,
+      });
+      const more = truncated
+        ? theme.fg("muted", `\n... ${totalLines - PREVIEW_LINES} more lines`)
+        : "";
+      return new Text(theme.fg("dim", head.trimEnd()) + more, 0, 0);
     },
   });
 }
