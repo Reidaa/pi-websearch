@@ -311,7 +311,7 @@ export default function websearchExtension(pi: ExtensionAPI) {
     },
 
     // Search results run to thousands of words. Collapsed, show the opening
-    // lines; ctrl+r expands the tool output to the full text.
+    // lines; ctrl+o (app.tools.expand) expands the tool output to the full text.
     renderResult(result, { expanded }, theme) {
       const content = result.content[0];
       const text = content?.type === "text" ? content.text : "";
