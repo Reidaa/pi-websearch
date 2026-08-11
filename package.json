@@ -1,0 +1,47 @@
+{
+  "name": "pi-websearch",
+  "version": "0.1.0",
+  "description": "Web search tool for pi, backed by the Exa or Parallel hosted MCP search endpoints.",
+  "keywords": [
+    "exa",
+    "parallel",
+    "pi",
+    "pi-extension",
+    "pi-package",
+    "websearch"
+  ],
+  "license": "MIT",
+  "files": [
+    "extensions",
+    "README.md",
+    "package.json"
+  ],
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt .",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "check": "oxfmt --check . && oxlint . && vitest run"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "oxfmt": "^0.63.0",
+    "oxlint": "^1.78.0",
+    "typebox": "*",
+    "vitest": "^4.1.10"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  }
+}
