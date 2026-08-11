@@ -7,7 +7,12 @@
  * stream, and both wrap the answer in `result.content[].text`.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  type ExtensionAPI,
+  type ExtensionContext,
+  truncateLine,
+} from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 
@@ -256,29 +261,14 @@ const parameters = Type.Object({
 });
 
 export default function websearchExtension(pi: ExtensionAPI) {
-  // Search queries leave the machine and often carry context from the session,
-  // so the user approves once per session before the first one goes out.
-  let approved = false;
   // Models re-ask the same question while working through a task. Serving the
   // repeat from memory saves a round trip and a hit against the rate limit.
   // Results expire so a long session does not answer from stale news.
   let cache = new Map<string, { at: number; result: SearchResult }>();
 
   pi.on("session_start", () => {
-    approved = false;
     cache = new Map();
   });
-
-  async function approve(ctx: ExtensionContext, query: string): Promise<boolean> {
-    // Without a UI there is nobody to ask, and the run was already started
-    // unattended on purpose, so the search proceeds like any other tool.
-    if (approved || !ctx.hasUI) return true;
-    approved = await ctx.ui.confirm(
-      "Send web search query?",
-      `This query is sent to an external search provider:\n\n  ${query}\n\nAllow web searches for this session?`,
-    );
-    return approved;
-  }
 
   pi.registerTool({
     name: "websearch",
@@ -290,8 +280,6 @@ export default function websearchExtension(pi: ExtensionAPI) {
     ],
     parameters,
     async execute(_toolCallId, params, signal, _onUpdate, ctx: ExtensionContext) {
-      if (!(await approve(ctx, params.query))) throw new Error("Web search declined by the user");
-
       const key = JSON.stringify(params);
       const hit = cache.get(key);
       let result = hit && Date.now() - hit.at < CACHE_TTL_MS ? hit.result : undefined;
@@ -307,6 +295,16 @@ export default function websearchExtension(pi: ExtensionAPI) {
         content: [{ type: "text", text }],
         details: { provider, query: params.query },
       };
+    },
+
+    // Show the query next to the call, so the search is readable at a glance.
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("Web Search ")) +
+          theme.fg("accent", truncateLine(args.query, 100).text),
+        0,
+        0,
+      );
     },
   });
 }

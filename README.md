@@ -25,9 +25,7 @@ Parameters: `query` (required), plus `numResults` (default 8, max 20), `livecraw
 `contextMaxCharacters` (default 10000, max 50000). The optional four apply to Exa
 only; Parallel derives its own result budget from the query.
 
-Before the first search of a session, pi asks you to approve sending queries to an
-external provider. The answer is remembered until the session restarts. Headless
-runs (`pi -p ...`) never prompt.
+Queries are sent to an external provider without a prompt.
 
 Identical searches are served from an in-memory cache for 15 minutes, so a model
 that re-asks the same question mid-task does not spend another round trip. The

@@ -186,7 +186,6 @@ function loadExtension() {
 
 const toolContext = (overrides: Record<string, any> = {}) => ({
   hasUI: false,
-  ui: { confirm: vi.fn<(title: string, message: string) => Promise<boolean>>(async () => true) },
   sessionManager: { getSessionId: () => "session-abc" },
   ...overrides,
 });
@@ -208,23 +207,6 @@ describe("websearch tool", () => {
     expect(result.content).toEqual([{ type: "text", text: "tool results" }]);
     expect(result.details).toEqual({ provider: "exa", query: "q" });
     expect(requestAt(fetchImpl).params.arguments.query).toBe("q");
-    vi.unstubAllGlobals();
-  });
-
-  test("asks once per session before sending a query, and remembers the answer", async () => {
-    vi.stubGlobal("fetch", async () => jsonResponse(mcpBody("ok")));
-
-    const { tool, onSessionStart } = loadExtension();
-    const ctx = toolContext({ hasUI: true });
-
-    await tool.execute("call-1", { query: "first" }, undefined, undefined, ctx);
-    await tool.execute("call-2", { query: "second" }, undefined, undefined, ctx);
-    expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.confirm.mock.calls[0]?.[1]).toContain("first");
-
-    onSessionStart();
-    await tool.execute("call-3", { query: "third" }, undefined, undefined, ctx);
-    expect(ctx.ui.confirm).toHaveBeenCalledTimes(2);
     vi.unstubAllGlobals();
   });
 
@@ -285,20 +267,6 @@ describe("websearch tool", () => {
     const retry = await tool.execute("call-2", { query: "q" }, undefined, undefined, ctx);
 
     expect(retry.content).toEqual([{ type: "text", text: "finally" }]);
-    vi.unstubAllGlobals();
-  });
-
-  test("fails the tool call when the user declines", async () => {
-    const fetchImpl = vi.fn();
-    vi.stubGlobal("fetch", fetchImpl);
-
-    const { tool } = loadExtension();
-    const ctx = toolContext({ hasUI: true, ui: { confirm: vi.fn(async () => false) } });
-
-    await expect(tool.execute("call-1", { query: "q" }, undefined, undefined, ctx)).rejects.toThrow(
-      /declined/,
-    );
-    expect(fetchImpl).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });
