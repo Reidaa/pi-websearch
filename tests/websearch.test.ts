@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import websearchExtension, {
+  CACHE_TTL_MS,
   DEFAULT_CONTEXT_MAX_CHARACTERS,
   NO_RESULTS,
   parseMcpResponse,
@@ -207,6 +208,66 @@ describe("websearch tool", () => {
     onSessionStart();
     await tool.execute("call-3", { query: "third" }, undefined, undefined, ctx);
     expect(ctx.ui.confirm).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+
+  test("serves a repeated query from the cache", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("cached results")));
+    vi.stubGlobal("fetch", fetchImpl);
+
+    const { tool } = loadExtension();
+    const ctx = toolContext();
+
+    const first = await tool.execute("call-1", { query: "q" }, undefined, undefined, ctx);
+    const second = await tool.execute("call-2", { query: "q" }, undefined, undefined, ctx);
+
+    expect(second.content).toEqual(first.content);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Different parameters are a different search.
+    await tool.execute("call-3", { query: "q", numResults: 3 }, undefined, undefined, ctx);
+    await tool.execute("call-4", { query: "other" }, undefined, undefined, ctx);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    vi.unstubAllGlobals();
+  });
+
+  test("refetches a stale result, and drops the cache on a new session", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("results")));
+    vi.stubGlobal("fetch", fetchImpl);
+
+    const { tool, onSessionStart } = loadExtension();
+    const ctx = toolContext();
+
+    await tool.execute("call-1", { query: "q" }, undefined, undefined, ctx);
+    vi.advanceTimersByTime(CACHE_TTL_MS + 1);
+    await tool.execute("call-2", { query: "q" }, undefined, undefined, ctx);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    onSessionStart();
+    await tool.execute("call-3", { query: "q" }, undefined, undefined, ctx);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  test("does not cache a failed search", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse("down", { status: 500 }))
+      .mockResolvedValueOnce(jsonResponse("down", { status: 500 }))
+      .mockResolvedValue(jsonResponse(mcpBody("finally")));
+    vi.stubGlobal("fetch", fetchImpl);
+
+    const { tool } = loadExtension();
+    const ctx = toolContext();
+
+    await expect(tool.execute("call-1", { query: "q" }, undefined, undefined, ctx)).rejects.toThrow(
+      /HTTP 500/,
+    );
+    const retry = await tool.execute("call-2", { query: "q" }, undefined, undefined, ctx);
+
+    expect(retry.content).toEqual([{ type: "text", text: "finally" }]);
     vi.unstubAllGlobals();
   });
 

@@ -29,6 +29,10 @@ Before the first search of a session, pi asks you to approve sending queries to 
 external provider. The answer is remembered until the session restarts. Headless
 runs (`pi -p ...`) never prompt.
 
+Identical searches are served from an in-memory cache for 15 minutes, so a model
+that re-asks the same question mid-task does not spend another round trip. The
+cache is cleared when the session restarts.
+
 ## Providers
 
 | Env var                 | Effect                                                         |

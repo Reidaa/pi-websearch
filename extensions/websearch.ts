@@ -18,6 +18,8 @@ export const MAX_NUM_RESULTS = 20;
 export const MAX_CONTEXT_CHARACTERS = 50_000;
 /** Keeps a single search from eating the context window when the model does not ask for a limit. */
 export const DEFAULT_CONTEXT_MAX_CHARACTERS = 10_000;
+/** How long an identical query keeps returning the same results within a session. */
+export const CACHE_TTL_MS = 15 * 60 * 1000;
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const TIMEOUT_MS = 25_000;
 const USER_AGENT = "pi-websearch";
@@ -173,10 +175,15 @@ export interface SearchOptions {
  * The keyless Exa endpoint is a courtesy service that rate-limits, so a single
  * failure should not lose a search when another provider is available.
  */
+export interface SearchResult {
+  provider: Provider;
+  text: string;
+}
+
 export async function search(
   input: SearchInput,
   options: SearchOptions = {},
-): Promise<{ provider: Provider; text: string }> {
+): Promise<SearchResult> {
   const env = options.env ?? process.env;
   const doFetch = options.fetchImpl ?? fetch;
   const sessionId = options.sessionId ?? "pi";
@@ -241,8 +248,14 @@ export default function websearchExtension(pi: ExtensionAPI) {
   // Search queries leave the machine and often carry context from the session,
   // so the user approves once per session before the first one goes out.
   let approved = false;
+  // Models re-ask the same question while working through a task. Serving the
+  // repeat from memory saves a round trip and a hit against the rate limit.
+  // Results expire so a long session does not answer from stale news.
+  let cache = new Map<string, { at: number; result: SearchResult }>();
+
   pi.on("session_start", () => {
     approved = false;
+    cache = new Map();
   });
 
   async function approve(ctx: ExtensionContext, query: string): Promise<boolean> {
@@ -268,10 +281,17 @@ export default function websearchExtension(pi: ExtensionAPI) {
     async execute(_toolCallId, params, signal, _onUpdate, ctx: ExtensionContext) {
       if (!(await approve(ctx, params.query))) throw new Error("Web search declined by the user");
 
-      const { provider, text } = await search(params, {
-        sessionId: ctx.sessionManager.getSessionId(),
-        signal,
-      });
+      const key = JSON.stringify(params);
+      const hit = cache.get(key);
+      let result = hit && Date.now() - hit.at < CACHE_TTL_MS ? hit.result : undefined;
+
+      if (!result) {
+        // A failed search throws here, so only real results reach the cache.
+        result = await search(params, { sessionId: ctx.sessionManager.getSessionId(), signal });
+        cache.set(key, { at: Date.now(), result });
+      }
+      const { provider, text } = result;
+
       return {
         content: [{ type: "text", text }],
         details: { provider, query: params.query },
