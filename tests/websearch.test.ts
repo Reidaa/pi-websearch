@@ -13,6 +13,25 @@ const mcpBody = (text: string) => JSON.stringify({ result: { content: [{ type: "
 const jsonResponse = (body: string, init?: ResponseInit) =>
   new Response(body, { headers: { "content-type": "application/json" }, ...init });
 
+/** A fetch stub that answers every call with the same body. */
+const fetchStub = (body: string, init?: ResponseInit) =>
+  vi.fn<typeof fetch>(async () => jsonResponse(body, init));
+
+/** Unpacks one recorded fetch call into the parts the assertions care about. */
+function requestAt(fetchImpl: ReturnType<typeof fetchStub>, index = 0) {
+  const call = fetchImpl.mock.calls[index];
+  if (!call) throw new Error(`no fetch call recorded at index ${index}`);
+  const [url, init = {}] = call;
+  return {
+    url: String(url),
+    headers: (init.headers ?? {}) as Record<string, string>,
+    params: JSON.parse(String(init.body)).params as {
+      name: string;
+      arguments: Record<string, unknown>;
+    },
+  };
+}
+
 describe("parseMcpResponse", () => {
   test("reads a plain JSON-RPC body", () => {
     expect(parseMcpResponse(mcpBody("hello"))).toBe("hello");
@@ -47,17 +66,17 @@ describe("providerOrder", () => {
 
 describe("search", () => {
   test("calls the Exa MCP endpoint with defaults applied", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("exa results")));
+    const fetchImpl = fetchStub(mcpBody("exa results"));
     const result = await search(
       { query: "pi coding agent" },
       { env: { EXA_API_KEY: "secret" }, fetchImpl },
     );
 
     expect(result).toEqual({ provider: "exa", text: "exa results" });
-    const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://mcp.exa.ai/mcp?exaApiKey=secret");
-    expect(init.headers["user-agent"]).toBe("pi-websearch");
-    expect(JSON.parse(init.body).params).toEqual({
+    const request = requestAt(fetchImpl);
+    expect(request.url).toBe("https://mcp.exa.ai/mcp?exaApiKey=secret");
+    expect(request.headers["user-agent"]).toBe("pi-websearch");
+    expect(request.params).toEqual({
       name: "web_search_exa",
       arguments: {
         query: "pi coding agent",
@@ -70,16 +89,14 @@ describe("search", () => {
   });
 
   test("passes an explicit context limit through", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("ok")));
+    const fetchImpl = fetchStub(mcpBody("ok"));
     await search({ query: "q", contextMaxCharacters: 42 }, { env: {}, fetchImpl });
 
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).params.arguments.contextMaxCharacters).toBe(
-      42,
-    );
+    expect(requestAt(fetchImpl).params.arguments.contextMaxCharacters).toBe(42);
   });
 
   test("calls the Parallel MCP endpoint with the session id", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("parallel results")));
+    const fetchImpl = fetchStub(mcpBody("parallel results"));
     const result = await search(
       { query: "latest news" },
       {
@@ -90,11 +107,11 @@ describe("search", () => {
     );
 
     expect(result).toEqual({ provider: "parallel", text: "parallel results" });
-    const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe("https://search.parallel.ai/mcp");
-    expect(init.headers.Authorization).toBe("Bearer token");
-    expect(init.headers["user-agent"]).toBe("pi-websearch");
-    expect(JSON.parse(init.body).params).toEqual({
+    const request = requestAt(fetchImpl);
+    expect(request.url).toBe("https://search.parallel.ai/mcp");
+    expect(request.headers.Authorization).toBe("Bearer token");
+    expect(request.headers["user-agent"]).toBe("pi-websearch");
+    expect(request.params).toEqual({
       name: "web_search",
       arguments: {
         objective: "latest news",
@@ -169,14 +186,14 @@ function loadExtension() {
 
 const toolContext = (overrides: Record<string, any> = {}) => ({
   hasUI: false,
-  ui: { confirm: vi.fn(async () => true) },
+  ui: { confirm: vi.fn<(title: string, message: string) => Promise<boolean>>(async () => true) },
   sessionManager: { getSessionId: () => "session-abc" },
   ...overrides,
 });
 
 describe("websearch tool", () => {
   test("executes a search and returns the provider in details", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(mcpBody("tool results")));
+    const fetchImpl = fetchStub(mcpBody("tool results"));
     vi.stubGlobal("fetch", fetchImpl);
 
     const { tool } = loadExtension();
@@ -190,7 +207,7 @@ describe("websearch tool", () => {
 
     expect(result.content).toEqual([{ type: "text", text: "tool results" }]);
     expect(result.details).toEqual({ provider: "exa", query: "q" });
-    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).params.arguments.query).toBe("q");
+    expect(requestAt(fetchImpl).params.arguments.query).toBe("q");
     vi.unstubAllGlobals();
   });
 
@@ -203,7 +220,7 @@ describe("websearch tool", () => {
     await tool.execute("call-1", { query: "first" }, undefined, undefined, ctx);
     await tool.execute("call-2", { query: "second" }, undefined, undefined, ctx);
     expect(ctx.ui.confirm).toHaveBeenCalledTimes(1);
-    expect(ctx.ui.confirm.mock.calls[0][1]).toContain("first");
+    expect(ctx.ui.confirm.mock.calls[0]?.[1]).toContain("first");
 
     onSessionStart();
     await tool.execute("call-3", { query: "third" }, undefined, undefined, ctx);

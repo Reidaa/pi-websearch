@@ -94,14 +94,25 @@ async function readBounded(response: Response): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+interface ProviderRequest {
+  url: string;
+  headers: Record<string, string>;
+  params: { name: string; arguments: Record<string, unknown> };
+}
+
 /** Builds the endpoint, JSON-RPC params and headers for one provider. */
-function requestFor(provider: Provider, input: SearchInput, env: Env, sessionId: string) {
+function requestFor(
+  provider: Provider,
+  input: SearchInput,
+  env: Env,
+  sessionId: string,
+): ProviderRequest {
   if (provider === "exa") {
     const url = new URL(EXA_URL);
     if (env.EXA_API_KEY) url.searchParams.set("exaApiKey", env.EXA_API_KEY);
     return {
       url: url.toString(),
-      headers: {} as Record<string, string>,
+      headers: {},
       params: {
         name: "web_search_exa",
         arguments: {

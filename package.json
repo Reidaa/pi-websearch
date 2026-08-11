@@ -20,15 +20,18 @@
   "scripts": {
     "format": "oxfmt .",
     "lint": "oxlint .",
+    "typecheck": "tsc",
     "test": "vitest run",
-    "check": "oxfmt --check . && oxlint . && vitest run"
+    "check": "oxfmt --check . && oxlint . && tsc && vitest run"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^26.2.0",
     "oxfmt": "^0.63.0",
     "oxlint": "^1.78.0",
     "typebox": "*",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "peerDependencies": {

@@ -48,7 +48,8 @@ keyless endpoints rate-limit.
 ## Development
 
 ```bash
-npm run check   # oxfmt --check, oxlint, vitest
-npm run format  # oxfmt in place
-npm test        # vitest
+npm run check      # oxfmt --check, oxlint, tsc, vitest
+npm run format     # oxfmt in place
+npm run typecheck  # tsc --noEmit
+npm test           # vitest
 ```
